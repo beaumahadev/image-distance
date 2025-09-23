@@ -96,12 +96,18 @@ def calculate_lpips(image1, image2):
 
 
 def save_results_to_csv(results_list, filename=None):
-    """Save comparison results to a CSV file."""
+    """Save comparison results to a CSV file inside the 'metrics_output' folder."""
+    import os
+
+    output_dir = "metrics_output"
+    os.makedirs(output_dir, exist_ok=True)
+
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"image_comparison_results_{timestamp}.csv"
+        filename = f"image_comparison_results.csv"
+    filepath = os.path.join(output_dir, filename)
     
-    with open(filename, 'w', newline='') as csvfile:
+    with open(filepath, 'w', newline='') as csvfile:
         fieldnames = ['input_image', 'output_image', 'mse', 'psnr', 'ssim', 'lpips', 'timestamp']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
@@ -109,9 +115,27 @@ def save_results_to_csv(results_list, filename=None):
         for result in results_list:
             writer.writerow(result)
     
-    print(f"\nResults saved to: {filename}")
-    return filename
+    print(f"\nResults saved to: {filepath}")
+    return filepath
 
+
+def resize_output(input_img, output_img):
+    """Resize the output image so its smaller dimension matches the input image's larger dimension"""
+    # Scale the output image so its smaller dimension matches the input image's larger dimension
+    in_h, in_w = input_img.shape[:2]
+    out_h, out_w = output_img.shape[:2]
+    input_larger_dim = max(in_h, in_w)
+    output_smaller_dim = min(out_h, out_w)
+    scale = input_larger_dim / output_smaller_dim
+    new_out_w = int(round(out_w * scale))
+    new_out_h = int(round(out_h * scale))
+    output_img = cv2.resize(output_img, (new_out_w, new_out_h), interpolation=cv2.INTER_AREA)
+    # Crop to match input image size
+    out_h, out_w = output_img.shape[:2]
+    crop_top = max((out_h - in_h) // 2, 0)
+    crop_left = max((out_w - in_w) // 2, 0)
+    output_img = output_img[crop_top:crop_top + in_h, crop_left:crop_left + in_w]     
+    return output_img
 
 def compare_images(input_image_path, output_image_path):
     """Compare two images using PSNR, SSIM, and MSE metrics."""
@@ -130,33 +154,21 @@ def compare_images(input_image_path, output_image_path):
     
     # Handle image dimensions mismatch
     if input_img.shape != output_img.shape:
+        output_img = resize_output(input_img, output_img)
 
-        # Scale the output image so its smaller dimension matches the input image's larger dimension
-        in_h, in_w = input_img.shape[:2]
-        out_h, out_w = output_img.shape[:2]
-        input_larger_dim = max(in_h, in_w)
-        output_smaller_dim = min(out_h, out_w)
-        scale = input_larger_dim / output_smaller_dim
-        new_out_w = int(round(out_w * scale))
-        new_out_h = int(round(out_h * scale))
-        output_img = cv2.resize(output_img, (new_out_w, new_out_h), interpolation=cv2.INTER_AREA)
-        # Crop to match input image size
-        out_h, out_w = output_img.shape[:2]
-        crop_top = max((out_h - in_h) // 2, 0)
-        crop_left = max((out_w - in_w) // 2, 0)
-        output_img = output_img[crop_top:crop_top + in_h, crop_left:crop_left + in_w]
-        
-        # Save the scaled and cropped output image
-        input_dir = os.path.dirname(input_image_path)
+        # Save the scaled and cropped output image for later visualization in 'output_crops' folder
+        output_dir = os.path.dirname(output_image_path)
+        output_crops_dir = os.path.join(output_dir, "output_crops")
+        os.makedirs(output_crops_dir, exist_ok=True)
         output_filename = os.path.basename(output_image_path)
         name, ext = os.path.splitext(output_filename)
         scaled_filename = f"{name}-scaled-cropped{ext}"
-        scaled_path = os.path.join(input_dir, scaled_filename)
-        
+        scaled_path = os.path.join(output_crops_dir, scaled_filename)
         # Convert RGB back to BGR for OpenCV saving
         output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
         cv2.imwrite(scaled_path, output_img_bgr)
         print(f"Saved scaled and cropped image to: {scaled_path}")
+
     
     # Calculate metrics
     try:
@@ -244,13 +256,6 @@ def main():
     
     if results:
         print(f"\nComparison completed successfully!")
-        # Interpretation
-        print("\nInterpretation:")
-        print(f"- MSE: Lower values indicate better similarity (0 = identical)")
-        print(f"- PSNR: Higher values indicate better quality (>30 dB is generally good)")
-        print(f"- SSIM: Values range from -1 to 1, where 1 = identical")
-        print(f"- LPIPS: Lower values indicate better perceptual similarity (0 = identical)")
-        
         # Save to CSV if requested
         if args.csv:
             save_results_to_csv([results], args.csv)
