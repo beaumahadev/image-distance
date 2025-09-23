@@ -137,7 +137,82 @@ def resize_output(input_img, output_img):
     output_img = output_img[crop_top:crop_top + in_h, crop_left:crop_left + in_w]     
     return output_img
 
-def compare_images(input_image_path, output_image_path):
+def resize_output_zero_pad(input_img, output_img):
+    """
+    Use padding to make the images the same size.
+    """
+    # Get image shapes
+    in_h, in_w = input_img.shape[:2]
+    out_h, out_w = output_img.shape[:2]
+    diff_h = in_h - out_h
+    diff_w = in_w - out_w
+
+    # Decide which dimension to match (the one with the smallest difference)
+    if abs(diff_h) <= abs(diff_w):
+        # Match heights
+        if diff_h > 0:
+            # Scale input image height down to match output image height
+            scale = out_h / in_h
+            new_in_w = int(round(in_w * scale))
+            input_img = cv2.resize(input_img, (new_in_w, out_h), interpolation=cv2.INTER_AREA)
+        if diff_h < 0: 
+            # Scale output image height down to match input image height
+            scale = in_h / out_h
+            new_out_w = int(round(out_w * scale))
+            output_img = cv2.resize(output_img, (new_out_w, in_h), interpolation=cv2.INTER_AREA)
+    else:
+        # Match widths
+        if diff_w > 0:
+            # Scale input image width down to match output image width
+            scale = out_w / in_w
+            new_in_h = int(round(in_h * scale))
+            input_img = cv2.resize(input_img, (out_w, new_in_h), interpolation=cv2.INTER_AREA)
+        if diff_w < 0: 
+            # Scale output image width down to match input image width
+            scale = in_w / out_w
+            new_out_h = int(round(out_h * scale))
+            output_img = cv2.resize(output_img, (in_w, new_out_h), interpolation=cv2.INTER_AREA)
+
+    # Check that at least one image dimension matches after resizing
+    in_h, in_w = input_img.shape[:2]
+    out_h, out_w = output_img.shape[:2]
+    if in_h != out_h and in_w != out_w:
+        print(f"Warning: After resizing, neither image dimension matches! input_img: ({in_h}, {in_w}), output_img: ({out_h}, {out_w})")
+    # Determine which dimension still doesn't match
+
+
+    if in_w != out_w:
+        # Pad width
+        if in_w > out_w:
+            # Pad output_img width
+            diff = in_w - out_w
+            pad_left = diff // 2
+            pad_right = diff - pad_left
+            output_img = cv2.copyMakeBorder(output_img, 0, 0, pad_left, pad_right, cv2.BORDER_CONSTANT, value=0)
+        if in_w < out_w:
+            # Pad input_img width
+            diff = out_w - in_w
+            pad_left = diff // 2
+            pad_right = diff - pad_left
+            input_img = cv2.copyMakeBorder(input_img, 0, 0, pad_left, pad_right, cv2.BORDER_CONSTANT, value=0)
+    if in_h != out_h:
+        # Pad height
+        if in_h > out_h:
+            # Pad output_img height
+            diff = in_h - out_h
+            pad_top = diff // 2
+            pad_bottom = diff - pad_top
+            output_img = cv2.copyMakeBorder(output_img, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=0)
+        if in_h < out_h:
+            # Pad input_img height
+            diff = out_h - in_h
+            pad_top = diff // 2
+            pad_bottom = diff - pad_top
+            input_img = cv2.copyMakeBorder(input_img, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=0)
+
+    return input_img, output_img
+
+def compare_images(input_image_path, output_image_path, method = "pad"):
     """Compare two images using PSNR, SSIM, and MSE metrics."""
     print("-" * 50)
     print(f"Comparing images:")
@@ -154,20 +229,19 @@ def compare_images(input_image_path, output_image_path):
     
     # Handle image dimensions mismatch
     if input_img.shape != output_img.shape:
-        output_img = resize_output(input_img, output_img)
+        if method == "crop":
+            output_img = resize_output(input_img, output_img)
+        if method == "pad":
+            input_img,output_img = resize_output_zero_pad(input_img, output_img)
 
-        # Save the scaled and cropped output image for later visualization in 'output_crops' folder
-        output_dir = os.path.dirname(output_image_path)
-        output_crops_dir = os.path.join(output_dir, "output_crops")
-        os.makedirs(output_crops_dir, exist_ok=True)
-        output_filename = os.path.basename(output_image_path)
-        name, ext = os.path.splitext(output_filename)
-        scaled_filename = f"{name}-scaled-cropped{ext}"
-        scaled_path = os.path.join(output_crops_dir, scaled_filename)
-        # Convert RGB back to BGR for OpenCV saving
-        output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(scaled_path, output_img_bgr)
-        print(f"Saved scaled and cropped image to: {scaled_path}")
+        # Save the processed images for later visualization in 'crops' folder
+        for img, path in zip([input_img, output_img], [input_image_path, output_image_path]):
+            crops_dir = os.path.join(os.path.dirname(path), "crops")
+            os.makedirs(crops_dir, exist_ok=True)
+            ext = os.path.splitext(path)[1] =
+            scaled_path = os.path.join(crops_dir, f"{os.path.splitext(os.path.basename(path))[0]}-{method}{ext}")
+            cv2.imwrite(scaled_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+            print(f"Saved scaled and cropped image to: {scaled_path}")
 
     
     # Calculate metrics
