@@ -95,16 +95,15 @@ def calculate_lpips(image1, image2):
     return lpips_value.item()
 
 
-def save_results_to_csv(results_list, filename=None):
+def save_results_to_csv(results_list):
     """Save comparison results to a CSV file inside the 'metrics_output' folder."""
     import os
 
     output_dir = "metrics_output"
     os.makedirs(output_dir, exist_ok=True)
 
-    if filename is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"image_comparison_results.csv"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"image_comparison_results_{timestamp}.csv"
     filepath = os.path.join(output_dir, filename)
     
     with open(filepath, 'w', newline='') as csvfile:
@@ -238,7 +237,7 @@ def compare_images(input_image_path, output_image_path, method = "pad"):
         for img, path in zip([input_img, output_img], [input_image_path, output_image_path]):
             crops_dir = os.path.join(os.path.dirname(path), "crops")
             os.makedirs(crops_dir, exist_ok=True)
-            ext = os.path.splitext(path)[1] =
+            ext = os.path.splitext(path)[1]
             scaled_path = os.path.join(crops_dir, f"{os.path.splitext(os.path.basename(path))[0]}-{method}{ext}")
             cv2.imwrite(scaled_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             print(f"Saved scaled and cropped image to: {scaled_path}")
@@ -274,69 +273,44 @@ def compare_images(input_image_path, output_image_path, method = "pad"):
 
 def main():
     """Main function to handle command line arguments and run comparison."""
-    import os
-
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Compare two images using PSNR, SSIM, MSE, and LPIPS.")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--examples", action="store_true", help="Compare all files in each folder under 'examples'")
-    group.add_argument("--images", nargs=2, metavar=('input_image', 'output_image'), help="Paths to the input and output images")
-    parser.add_argument("--csv", help="Save results to CSV file (optional filename)")
+    parser = argparse.ArgumentParser(description="Compare images using PSNR, SSIM, MSE, and LPIPS.")
+    parser.add_argument("--examples_dir", required=True, help="Directory containing example folders (default: examples_real)")
     args = parser.parse_args()
+    examples_dir = args.examples_dir
 
-    if args.examples:
-        examples_dir = "examples"
-        if not os.path.isdir(examples_dir):
-            print(f"Directory '{examples_dir}' not found.")
-            exit(1)
-        
-        all_results = []
-        for folder in sorted(os.listdir(examples_dir)):
-            folder_path = os.path.join(examples_dir, folder)
-            if not os.path.isdir(folder_path):
-                continue
-            files = [f for f in sorted(os.listdir(folder_path)) if os.path.isfile(os.path.join(folder_path, f))]
-            if not files:
-                continue
-            input_files = [f for f in files if 'input' in f.lower()]
-            if not input_files:
-                print(f"Input file in '{folder_path}' must contain 'input' in file name.")
-                continue
-            input_file = input_files[0]
-            print(f"\n=== Comparing '{input_file}' to other files in '{folder}' ===")
-            print(f"{'Compared File':>20}{'MSE':>15}{'PSNR':>10}{'SSIM':>10}{'LPIPS':>10}")
-            for f in files:
-                if f == input_file:
-                    continue
-                img1 = os.path.join(folder_path, input_file)
-                img2 = os.path.join(folder_path, f)
-                metrics = compare_images(img1, img2)
-                if metrics:
-                    print(f"{f:>20}{metrics['mse']:>15.2f}{metrics['psnr']:>10.2f}{metrics['ssim']:>10.3f}{metrics['lpips']:>10.3f}")
-                    all_results.append(metrics)
-                else:
-                    print(f"{f:>20}{'ERROR':>15}{'ERROR':>10}{'ERROR':>10}{'ERROR':>10}")
-        
-        # Save to CSV if requested
-        if args.csv or len(all_results) > 0:
-            csv_filename = args.csv if args.csv else None
-            save_results_to_csv(all_results, csv_filename)
-        
-        exit(0)
-
-
-    results = compare_images(args.images[0], args.images[1])
-    
-    if results:
-        print(f"\nComparison completed successfully!")
-        # Save to CSV if requested
-        if args.csv:
-            save_results_to_csv([results], args.csv)
-        
-    else:
-        print(f"\nComparison failed!")
+    if not os.path.isdir(examples_dir):
+        print(f"Directory '{examples_dir}' not found.")
         exit(1)
+    all_results = []
+    for folder in sorted(os.listdir(examples_dir)):
+        folder_path = os.path.join(examples_dir, folder)
+        if not os.path.isdir(folder_path):
+            continue
+        files = [f for f in sorted(os.listdir(folder_path)) if os.path.isfile(os.path.join(folder_path, f))]
+        if not files:
+            continue
+        input_files = [f for f in files if 'input' in f.lower()]
+        if not input_files:
+            print(f"Input file in '{folder_path}' must contain 'input' in file name.")
+            continue
+        input_file = input_files[0]
+        print(f"\n=== Comparing '{input_file}' to other files in '{folder}' ===")
+        print(f"{'Compared File':>20}{'MSE':>15}{'PSNR':>10}{'SSIM':>10}{'LPIPS':>10}")
+        for f in files:
+            if f == input_file:
+                continue
+            img1 = os.path.join(folder_path, input_file)
+            img2 = os.path.join(folder_path, f)
+            metrics = compare_images(img1, img2)
+            if metrics:
+                print(f"{f:>20}{metrics['mse']:>15.2f}{metrics['psnr']:>10.2f}{metrics['ssim']:>10.3f}{metrics['lpips']:>10.3f}")
+                all_results.append(metrics)
+            else:
+                print(f"{f:>20}{'ERROR':>15}{'ERROR':>10}{'ERROR':>10}{'ERROR':>10}")
+        
+
+    save_results_to_csv(all_results)
+        
 
 
 if __name__ == "__main__":
